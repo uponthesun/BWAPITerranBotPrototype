@@ -25,6 +25,8 @@ public class TestBot1 extends DefaultBWListener {
 
     private Player self;
 
+    private BaseLocation myMain;
+    
     public void run() {
         mirror.getModule().setEventListener(this);
         mirror.startGame();
@@ -58,22 +60,15 @@ public class TestBot1 extends DefaultBWListener {
             System.out.println();
         }
 
+        myMain = BWTA.getStartLocation(self);
+
         game.enableFlag(1);
         game.setLocalSpeed(10);
     }
 
-    private void printGameInfo(Game game) {
-        try {
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
-    }
-
     private void drawBaseLocation(Game game, BaseLocation base) {
         List<Position> points = base.getRegion().getPolygon().getPoints();
-        
+
         Position from = points.get(points.size() - 1);
         
         for(Position to : base.getRegion().getPolygon().getPoints()) {
@@ -97,9 +92,6 @@ public class TestBot1 extends DefaultBWListener {
         int deltaY = chokeCenter.getY() - baseCenter.getY();
 
         final Position defaultDepotLocation = new Position(baseCenter.getX() - deltaX/2, baseCenter.getY() - deltaY/2);
-        game.drawCircleMap(defaultDepotLocation, 10, Color.Green);
-        game.drawCircleMap(defaultDepotLocation.getX() + 96, defaultDepotLocation.getY(), 10, Color.Green);
-        game.drawCircleMap(defaultDepotLocation.getX(), defaultDepotLocation.getY() + 64, 10, Color.Green);
 
         Position buildPosition = findBuildablePosition(defaultDepotLocation, UnitType.Terran_Supply_Depot);
         if(buildPosition == null) {
@@ -149,29 +141,42 @@ public class TestBot1 extends DefaultBWListener {
         return null;
     }
     
+    private void addUnitDebugInfo(StringBuilder screen_text, Multimap<UnitType, Unit> units,
+            Multimap<UnitType, Unit> incompleteUnits) {
+        screen_text.append("Units: ").append("\n");
+        for (Unit unit : units.allValues()) {
+            screen_text
+                .append(unit.getType()).append(" ")
+                .append("isIdle: ").append(unit.isIdle()).append(" ")
+                .append("LastCommand: ").append(unit.getLastCommand().getUnitCommandType()).append(" ")
+                .append(unit.getTilePosition()).append("\n");
+        }
+
+        screen_text.append("Units under construction: ").append("\n");
+        for (Unit unit : incompleteUnits.allValues()) {
+            int remainingTime = unit.isTraining() ? unit.getRemainingTrainTime() :
+                unit.getRemainingBuildTime();
+            
+            screen_text
+                .append(unit.getType()).append(" ")
+                .append("remaining frames: ").append(remainingTime);
+        }
+    }
+
     @Override
     public void onFrame() {
         try {
-            // game.setTextSize(10);
-            //game.drawTextScreen(10, 10, "Playing as " + self.getName() + " - "
-              //      + self.getRace());
-            
-            BaseLocation myMain = BWTA.getStartLocation(self);
-            drawBaseLocation(game, myMain);
-            printGameInfo(game);
+            final StringBuilder screen_text = new StringBuilder("");
 
-            StringBuilder screen_text = new StringBuilder("My units:\n");
-            
-            Multimap<UnitType, Unit> unitsByType = new Multimap<>();
-            
+            final Multimap<UnitType, Unit> unitsByType = new Multimap<>();
+            final Multimap<UnitType, Unit> incompleteUnits = new Multimap<>();
+
             // iterate through my units
             for (Unit unit : self.getUnits()) {
-                unitsByType.put(unit.getType(), unit);
-
-                if(unit.isCompleted()) {
-                    screen_text.append(unit.getType()).append(" ")
-                    .append("isIdle: " + unit.isIdle() + " ")
-                    .append(unit.getTilePosition()).append("\n");
+                if (unit.isCompleted()) {
+                    unitsByType.put(unit.getType(), unit);
+                } else {
+                    incompleteUnits.put(unit.getType(), unit);
                 }
             }
 
@@ -223,17 +228,19 @@ public class TestBot1 extends DefaultBWListener {
             if(builder == null) {
                 throw new RuntimeException("no builder selected");
             }
-            
-            //if(self.supplyUsed() >= self.supplyTotal() - 2 && 
-            if (self.minerals() >= 100 &&
+
+            if(self.supplyUsed() >= self.supplyTotal() - 2 && 
+                    self.minerals() >= 100 &&
                     !unitsByType.get(UnitType.Terran_Supply_Depot).stream().anyMatch(Unit::isBeingConstructed)) {
                 System.out.println("attempting to build depot");
                 buildDepot(game, myMain, builder);
             }
 
-            screen_text.append("\nMouse position: " + game.getMousePosition());
             // Draw debug info on screen
+            addUnitDebugInfo(screen_text, unitsByType, incompleteUnits);
+            screen_text.append("\nMouse position: " + game.getMousePosition());
             game.drawTextScreen(10, 25, screen_text.toString());
+            drawBaseLocation(game, myMain);
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
