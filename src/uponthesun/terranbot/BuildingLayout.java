@@ -1,23 +1,21 @@
+package uponthesun.terranbot;
+import java.util.HashMap;
+import java.util.Map;
+
 import bwapi.Position;
 import bwta.BaseLocation;
 import bwta.Chokepoint;
 
 public class BuildingLayout {
 
-    private final Position productionDefaultLocation;
-    private final Position supplyDefaultLocation;
+    private final Map<LocationType, Position> defaultLocations;
 
-    public BuildingLayout(Position productionDefaultLocation, Position supplyDefaultLocation) {
-        this.productionDefaultLocation = productionDefaultLocation;
-        this.supplyDefaultLocation = supplyDefaultLocation;
+    private BuildingLayout(Map<LocationType, Position> defaultLocations) {
+        this.defaultLocations = defaultLocations;
     }
 
-    public Position getProductionDefaultLocation() {
-        return productionDefaultLocation;
-    }
-
-    public Position getSupplyDefaultLocation() {
-        return supplyDefaultLocation;
+    public Position getDefaultLocation(LocationType locationType) {
+        return this.defaultLocations.get(locationType);
     }
 
     public static BuildingLayout createFromBaseLocation(BaseLocation base) {
@@ -32,6 +30,14 @@ public class BuildingLayout {
         final Position supplyDefaultLocation = new Position(baseCenter.getX() - deltaX/2, baseCenter.getY() - deltaY/2);
         final Position productionDefaultLocation = new Position(baseCenter.getX() + deltaX/2, baseCenter.getY() + deltaY/2);
 
-        return new BuildingLayout(productionDefaultLocation, supplyDefaultLocation);
+        Map<LocationType, Position> defaultLocations = new HashMap<>();
+        defaultLocations.put(LocationType.PRODUCTION, productionDefaultLocation);
+        defaultLocations.put(LocationType.SUPPLY, supplyDefaultLocation);
+        return new BuildingLayout(defaultLocations);
+    }
+
+    public enum LocationType {
+        PRODUCTION,
+        SUPPLY
     }
 }

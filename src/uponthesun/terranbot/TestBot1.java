@@ -1,6 +1,8 @@
+package uponthesun.terranbot;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
@@ -16,6 +18,7 @@ import bwapi.UnitType;
 import bwta.BWTA;
 import bwta.BaseLocation;
 import bwta.Chokepoint;
+import uponthesun.terranbot.BuildingLayout.LocationType;
 
 public class TestBot1 extends DefaultBWListener {
 
@@ -29,6 +32,8 @@ public class TestBot1 extends DefaultBWListener {
     private BaseLocation myMain;
     private BuildingLayout mainBuildingLayout;
 
+    private BuildOrder buildOrder;
+
     public void run() {
         mirror.getModule().setEventListener(this);
         mirror.startGame();
@@ -36,7 +41,7 @@ public class TestBot1 extends DefaultBWListener {
 
     @Override
     public void onUnitCreate(Unit unit) {
-        System.out.println("New unit discovered " + unit.getType());
+        //System.out.println("New unit discovered " + unit.getType());
     }
 
     @Override
@@ -50,24 +55,19 @@ public class TestBot1 extends DefaultBWListener {
         BWTA.readMap();
         BWTA.analyze();
         System.out.println("Map data ready");
-        
-        int i = 0;
-        for (BaseLocation baseLocation : BWTA.getBaseLocations()) {
-            System.out.println("Base location #" + (++i)
-                    + ". Printing location's region polygon:");
-            for (Position position : baseLocation.getRegion().getPolygon()
-                    .getPoints()) {
-                System.out.print(position + ", ");
-            }
-            System.out.println();
-        }
 
         myMain = BWTA.getStartLocation(self);
 
         game.enableFlag(1);
         game.setLocalSpeed(10);
-        
+
         mainBuildingLayout = BuildingLayout.createFromBaseLocation(myMain);
+        try {
+            buildOrder = BuildOrder.parseBuildOrder("bo_test.txt");
+            System.out.println("build order steps: " + buildOrder.getSteps());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void drawBaseLocation(Game game, BaseLocation base, BuildingLayout buildingLayout) {
@@ -77,7 +77,6 @@ public class TestBot1 extends DefaultBWListener {
         
         for(Position to : base.getRegion().getPolygon().getPoints()) {
             game.drawLineMap(from, to, Color.Red);
-
             from = to;
         }
         
@@ -85,8 +84,8 @@ public class TestBot1 extends DefaultBWListener {
             game.drawLineMap(choke.getSides().first, choke.getSides().second, Color.Blue);
         }
 
-        game.drawCircleMap(buildingLayout.getProductionDefaultLocation(), 10, Color.Orange);
-        game.drawCircleMap(buildingLayout.getSupplyDefaultLocation(), 10, Color.Green);
+        game.drawCircleMap(buildingLayout.getDefaultLocation(LocationType.PRODUCTION), 10, Color.Orange);
+        game.drawCircleMap(buildingLayout.getDefaultLocation(LocationType.SUPPLY), 10, Color.Green);
     }
     
     private void buildDepot(Game game, BaseLocation base, Unit scv) {
@@ -100,22 +99,22 @@ public class TestBot1 extends DefaultBWListener {
 
         final Position defaultDepotLocation = new Position(baseCenter.getX() - deltaX/2, baseCenter.getY() - deltaY/2);
 
-        Position buildPosition = findBuildablePosition(defaultDepotLocation, UnitType.Terran_Supply_Depot);
-        if(buildPosition == null) {
+        Optional<Position> buildPosition = findBuildablePosition(defaultDepotLocation, UnitType.Terran_Supply_Depot);
+        if(!buildPosition.isPresent()) {
             throw new RuntimeException("could not find buildable position.");
         }
 
-        scv.build(UnitType.Terran_Supply_Depot, buildPosition.toTilePosition());
+        scv.build(UnitType.Terran_Supply_Depot, buildPosition.get().toTilePosition());
     }
 
-    private Position findBuildablePosition(final Position start, UnitType buildingType) {
+    private Optional<Position> findBuildablePosition(final Position start, UnitType buildingType) {
         Comparator<Position> comparator = new Comparator<Position>() {
             @Override
             public int compare(Position arg0, Position arg1) {
                 return (int)(arg0.getDistance(start) - arg1.getDistance(start));
             }
         };
-        
+
         Queue<Position> queue = new PriorityQueue<>(comparator);
         Set<Position> visited = new HashSet<>();
         queue.add(start);
@@ -131,7 +130,7 @@ public class TestBot1 extends DefaultBWListener {
 
             if(this.game.canBuildHere(curr.toTilePosition(), UnitType.Terran_Supply_Depot)) {
                 System.out.println("found buildable: " + curr);
-                return curr;
+                return Optional.of(curr);
             }
             
             visited.add(curr);
@@ -145,7 +144,7 @@ public class TestBot1 extends DefaultBWListener {
             }
         }
         
-        return null;
+        return Optional.empty();
     }
     
     private void addUnitDebugInfo(StringBuilder screen_text, Multimap<UnitType, Unit> units,
@@ -188,10 +187,9 @@ public class TestBot1 extends DefaultBWListener {
             }
 
             for (Unit cc : unitsByType.get(UnitType.Terran_Command_Center)) {
-                if((cc.getTrainingQueue().isEmpty())
-                        && self.minerals() >= 50) {
-                    cc.train(UnitType.Terran_SCV);
-                } else if (cc.getTrainingQueue().size() == 1 && cc.getRemainingTrainTime() < 5
+                // If there's no SCVs building, or if there's exactly one building and it's almost complete
+                if(cc.getTrainingQueue().isEmpty() && self.minerals() >= 50 ||
+                        cc.getTrainingQueue().size() == 1 && cc.getRemainingTrainTime() < 5
                         && cc.getRemainingTrainTime() > 0) {
                     cc.train(UnitType.Terran_SCV);
                 }
@@ -200,7 +198,6 @@ public class TestBot1 extends DefaultBWListener {
             Unit builder = null;
             for (Unit scv : unitsByType.get(UnitType.Terran_SCV)) {
                 if(builder == null && myMain.getRegion().getPolygon().isInside(scv.getPosition())) {
-                    //System.out.println("selected default builder");
                     builder = scv;
                 }
 
@@ -212,9 +209,7 @@ public class TestBot1 extends DefaultBWListener {
                     // find the closest mineral
                     for (Unit neutralUnit : game.neutral().getUnits()) {
                         if (neutralUnit.getType().isMineralField()) {
-                            if (closestMineral == null
-                                    || scv.getDistance(neutralUnit) < scv
-                                    .getDistance(closestMineral)) {
+                            if (closestMineral == null || scv.getDistance(neutralUnit) < scv.getDistance(closestMineral)) {
                                 closestMineral = neutralUnit;
                             }
                         }
