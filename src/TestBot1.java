@@ -25,8 +25,10 @@ public class TestBot1 extends DefaultBWListener {
 
     private Player self;
 
+    // TODO: map of bases?
     private BaseLocation myMain;
-    
+    private BuildingLayout mainBuildingLayout;
+
     public void run() {
         mirror.getModule().setEventListener(this);
         mirror.startGame();
@@ -64,9 +66,11 @@ public class TestBot1 extends DefaultBWListener {
 
         game.enableFlag(1);
         game.setLocalSpeed(10);
+        
+        mainBuildingLayout = BuildingLayout.createFromBaseLocation(myMain);
     }
 
-    private void drawBaseLocation(Game game, BaseLocation base) {
+    private void drawBaseLocation(Game game, BaseLocation base, BuildingLayout buildingLayout) {
         List<Position> points = base.getRegion().getPolygon().getPoints();
 
         Position from = points.get(points.size() - 1);
@@ -80,6 +84,9 @@ public class TestBot1 extends DefaultBWListener {
         for(Chokepoint choke : base.getRegion().getChokepoints()) {
             game.drawLineMap(choke.getSides().first, choke.getSides().second, Color.Blue);
         }
+
+        game.drawCircleMap(buildingLayout.getProductionDefaultLocation(), 10, Color.Orange);
+        game.drawCircleMap(buildingLayout.getSupplyDefaultLocation(), 10, Color.Green);
     }
     
     private void buildDepot(Game game, BaseLocation base, Unit scv) {
@@ -240,7 +247,7 @@ public class TestBot1 extends DefaultBWListener {
             addUnitDebugInfo(screen_text, unitsByType, incompleteUnits);
             screen_text.append("\nMouse position: " + game.getMousePosition());
             game.drawTextScreen(10, 25, screen_text.toString());
-            drawBaseLocation(game, myMain);
+            drawBaseLocation(game, myMain, mainBuildingLayout);
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
